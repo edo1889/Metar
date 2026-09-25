@@ -214,7 +214,7 @@
   <div class="info-box">
     <strong>Catatan:</strong>
     <ul style="margin:0.5rem 0 0 1.2rem;">
-      <li><strong>METAR</strong> — suhu aktual dari AviationWeather.gov (AWC). Kolom <strong>Usia data</strong> = waktu sejak observasi METAR dalam UTC (hijau ≤30 mnt, oranye 30–60 mnt, merah >1 jam).</li>
+      <li><strong>METAR</strong> — suhu aktual dari AWC/NOAA. Khusus <strong>NZWN</strong> memakai <a href="https://www.metservice.com/weather-station-location/93439/lyall-bay" target="_blank" rel="noopener">MetService Lyall Bay (93439)</a>. Kolom <strong>Usia data</strong> = menit sejak observasi (hijau ≤30 mnt, oranye 30–60 mnt, merah >1 jam).</li>
       <li><strong>Forecast</strong> — suhu tertinggi harian dari Open-Meteo (pengganti WU yang lebih stabil & gratis).</li>
       <li><strong>Polymarket</strong> — bucket suhu dengan probabilitas Yes tertinggi di market “Highest temperature in [City]” hari ini. Bandara custom hanya menampilkan Polymarket jika mapping kota tersedia.</li>
       <li>Mapping bandara mengikuti stasiun resolusi Polymarket (contoh NYC → KLGA, Paris → LFPB).</li>
@@ -222,7 +222,7 @@
   </div>
 
   <footer>
-    Data: AviationWeather.gov / NOAA METAR · METAR mirrors · VATSIM · Open-Meteo · Polymarket Gamma API
+    Data: MetService NZ (NZWN) · AviationWeather.gov / NOAA · VATSIM · Open-Meteo · Polymarket Gamma API
   </footer>
 
   <script>
@@ -639,6 +639,68 @@
       return parseRawMetar(raw, icao, source, observedAt);
     }
 
+    /** MetService NZ — stasiun Lyall Bay / Wellington Aero AWS (93439) untuk NZWN */
+    async function fetchMetServiceLyallBay() {
+      const target = "https://www.metservice.com/publicData/localObs_lyall-bay";
+      const proxies = [
+        target,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(target)}`
+      ];
+
+      let data = null;
+      let lastErr = null;
+      for (const url of proxies) {
+        try {
+          const res = await fetchWithTimeout(url, { headers: { Accept: "application/json" } }, 5000);
+          data = await res.json();
+          if (data && data.threeHour) break;
+          data = null;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (!data?.threeHour) {
+        throw lastErr || new Error("MetService Lyall Bay gagal");
+      }
+
+      const th = data.threeHour;
+      const tempC = Number(th.temp);
+      if (!Number.isFinite(tempC)) throw new Error("Suhu MetService tidak valid");
+
+      let obsDate = null;
+      let timeStr = "";
+      if (th.dateTimeISO) {
+        const d = new Date(th.dateTimeISO);
+        if (!isNaN(d.getTime())) {
+          obsDate = d;
+          const dd = String(d.getUTCDate()).padStart(2, "0");
+          const hh = String(d.getUTCHours()).padStart(2, "0");
+          const mm = String(d.getUTCMinutes()).padStart(2, "0");
+          timeStr = `${dd}/${hh}:${mm}Z`;
+        }
+      } else if (th.rawTime) {
+        const d = new Date(Number(th.rawTime));
+        if (!isNaN(d.getTime())) {
+          obsDate = d;
+          const dd = String(d.getUTCDate()).padStart(2, "0");
+          const hh = String(d.getUTCHours()).padStart(2, "0");
+          const mm = String(d.getUTCMinutes()).padStart(2, "0");
+          timeStr = `${dd}/${hh}:${mm}Z`;
+        }
+      }
+
+      return {
+        tempC,
+        raw: `MetService 93439 ${th.dateTime || ""} temp=${th.temp}°C wind=${th.windSpeed || "?"} ${th.windDirection || ""}`,
+        time: timeStr,
+        obsDate,
+        name: "NZWN",
+        source: "MetService Lyall Bay",
+        timeseriesUrl: "https://www.metservice.com/weather-station-location/93439/lyall-bay"
+      };
+    }
+
     async function fetchMetar(icao, forceRefresh = false) {
       const cached = METAR_CACHE.get(icao);
       if (!forceRefresh && cached && (Date.now() - cached.savedAt) < METAR_CACHE_MS) {
@@ -656,6 +718,11 @@
       ];
 
       const jobs = [];
+
+      // Khusus NZWN: prioritaskan MetService Lyall Bay (stasiun 93439)
+      if (icao === "NZWN") {
+        jobs.push(fetchMetServiceLyallBay());
+      }
 
       for (const url of awcProxies) {
         jobs.push(
@@ -715,9 +782,10 @@
         const ta = a.obsDate ? a.obsDate.getTime() : 0;
         const tb = b.obsDate ? b.obsDate.getTime() : 0;
         if (tb !== ta) return tb - ta; // terbaru dulu
-        // Timestamp sama → prioritaskan AWC / NOAA over VATSIM
+        // Timestamp sama → prioritaskan MetService (NZWN) > AWC/NOAA > VATSIM
         const rank = (s) => {
           const x = String(s || "").toLowerCase();
+          if (x.includes("metservice")) return 4;
           if (x.includes("aviationweather") || x.includes("awc")) return 3;
           if (x.includes("noaa") || x.includes("wxdecoder") || x.includes("metars.eu")) return 2;
           return 1;
