@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Suhu Bandara: METAR × Forecast × Polymarket</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --green: #22c55e;
+      --orange: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 1.5rem;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      background: var(--card);
+      padding: 1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    select, button, input[type="text"] {
+      font-size: 0.95rem;
+      padding: 0.55rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #243044;
+      color: var(--text);
+      cursor: pointer;
+    }
+    select, input[type="text"] { min-width: 260px; }
+    input[type="text"] { cursor: text; }
+    .auto-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-left: 0.5rem;
+    }
+    .auto-label span { color: var(--green); }
+    button {
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: transparent;
+      border-color: var(--border);
+    }
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1040px;
+    }
+    th, td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #1e2a3d;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(59,130,246,0.06); }
+    .icao {
+      font-family: ui-monospace, monospace;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .temp {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+    .unit { font-size: 0.75rem; color: var(--muted); margin-left: 2px; }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .prob {
+      display: inline-block;
+      background: #1e3a2f;
+      color: var(--green);
+      padding: 0.15rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .status {
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+    .loading { color: var(--orange); }
+    .error { color: var(--red); }
+    .ok { color: var(--green); }
+    .info-box {
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .info-box strong { color: var(--text); }
+    .info-box a { color: var(--accent); }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+    .badge-f { background: #3b2f1e; color: #fbbf24; }
+    .badge-c { background: #1e2f3b; color: #38bdf8; }
+    textarea.note {
+      width: 180px;
+      min-height: 56px;
+      resize: vertical;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #243044;
+      color: var(--text);
+      font-family: inherit;
+    }
+    textarea.note:focus {
+      outline: 1px solid var(--accent);
+    }
+    footer {
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Perbandingan Suhu Bandara</h1>
+  <p class="subtitle">
+    METAR aktual · Ramalan suhu tertinggi (Open-Meteo) · Favorit Polymarket
+  </p>
+
+  <div class="controls">
+    <input type="text" id="airportInput" list="airportList" placeholder="Ketik ICAO (mis. KLGA, LIMC, atau ICAO lain)…" autocomplete="off" />
+    <datalist id="airportList"></datalist>
+    <button id="btnAdd">+ Tambah ke tabel</button>
+    <button id="btnFetchAll" class="secondary">Refresh semua</button>
+    <button id="btnClear" class="secondary">Hapus tabel</button>
+    <span class="auto-label">Auto-refresh: <span id="autoStatus">ON (2 menit)</span></span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Bandara</th>
+          <th>Temp METAR sekarang</th>
+          <th>Usia data</th>
+          <th>High Forecast (hari ini)</th>
+          <th>Polymarket High Temp (favorit)</th>
+          <th>Catatan (My Position)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr id="emptyRow">
+          <td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">
+            Ketik kode ICAO lalu klik “Tambah ke tabel”. ICAO di luar daftar akan dicari otomatis.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="info-box">
+    <strong>Catatan:</strong>
+    <ul style="margin:0.5rem 0 0 1.2rem;">
+      <li><strong>METAR</strong> — suhu aktual dari AviationWeather.gov (AWC). Kolom <strong>Usia data</strong> = waktu sejak observasi METAR dalam UTC (hijau ≤30 mnt, oranye 30–60 mnt, merah >1 jam).</li>
+      <li><strong>Forecast</strong> — suhu tertinggi harian dari Open-Meteo (pengganti WU yang lebih stabil & gratis).</li>
+      <li><strong>Polymarket</strong> — bucket suhu dengan probabilitas Yes tertinggi di market “Highest temperature in [City]” hari ini. Bandara custom hanya menampilkan Polymarket jika mapping kota tersedia.</li>
+      <li>Mapping bandara mengikuti stasiun resolusi Polymarket (contoh NYC → KLGA, Paris → LFPB).</li>
+    </ul>
+  </div>
+
+  <footer>
+    Data: AviationWeather.gov / NOAA METAR · METAR mirrors · VATSIM · Open-Meteo · Polymarket Gamma API
+  </footer>
+
+  <script>
+    // ========== Data bandara populer + mapping Polymarket ==========
+    const AIRPORTS = [
+    { icao: "LIMC", name: "Milano Malpensa Airport", city: "Milan", polyCity: "milan", lat: 45.6306, lon: 8.7281, unit: "C" },
+
+      // Amerika
+      { icao: "KLGA", name: "New York LaGuardia", city: "NYC", polyCity: "nyc", lat: 40.7772, lon: -73.8726, unit: "F" },
+      { icao: "KJFK", name: "New York JFK", city: "NYC", polyCity: "nyc", lat: 40.6413, lon: -73.7781, unit: "F" },
+      { icao: "KLAX", name: "Los Angeles Intl", city: "Los Angeles", polyCity: "los-angeles", lat: 33.9425, lon: -118.4081, unit: "F" },
+      { icao: "KMIA", name: "Miami Intl", city: "Miami", polyCity: "miami", lat: 25.7959, lon: -80.2870, unit: "F" },
+      { icao: "KMDW", name: "Chicago Midway", city: "Chicago", polyCity: "chicago", lat: 41.7868, lon: -87.7522, unit: "F" },
+      { icao: "KORD", name: "Chicago O'Hare", city: "Chicago", polyCity: "chicago", lat: 41.9742, lon: -87.9073, unit: "F" },
+      { icao: "KATL", name: "Atlanta Hartsfield", city: "Atlanta", polyCity: "atlanta", lat: 33.6407, lon: -84.4277, unit: "F" },
+      // Eropa
+      { icao: "EGLL", name: "London Heathrow", city: "London", polyCity: "london", lat: 51.4700, lon: -0.4543, unit: "C" },
+      { icao: "EGLC", name: "London City", city: "London", polyCity: "london", lat: 51.5053, lon: 0.0553, unit: "C" },
+      { icao: "LFPB", name: "Paris Le Bourget", city: "Paris", polyCity: "paris", lat: 48.9694, lon: 2.4414, unit: "C" },
+      { icao: "LFPG", name: "Paris CDG", city: "Paris", polyCity: "paris", lat: 49.0097, lon: 2.5479, unit: "C" },
+      { icao: "EDDF", name: "Frankfurt", city: "Frankfurt", polyCity: "frankfurt", lat: 50.0379, lon: 8.5622, unit: "C" },
+      { icao: "EHAM", name: "Amsterdam Schiphol", city: "Amsterdam", polyCity: "amsterdam", lat: 52.3105, lon: 4.7683, unit: "C" },
+      { icao: "LEMD", name: "Madrid Barajas", city: "Madrid", polyCity: "madrid", lat: 40.4983, lon: -3.5676, unit: "C" },
+      { icao: "LIRF", name: "Rome Fiumicino", city: "Rome", polyCity: "rome", lat: 41.8003, lon: 12.2389, unit: "C" },
+      { icao: "EPWA", name: "Warsaw Chopin", city: "Warsaw", polyCity: "warsaw", lat: 52.1657, lon: 20.9671, unit: "C" },
+      // Asia
+      { icao: "RJTT", name: "Tokyo Haneda", city: "Tokyo", polyCity: "tokyo", lat: 35.5494, lon: 139.7798, unit: "C" },
+      { icao: "RJAA", name: "Tokyo Narita", city: "Tokyo", polyCity: "tokyo", lat: 35.7720, lon: 140.3929, unit: "C" },
+      { icao: "VHHH", name: "Hong Kong Intl", city: "Hong Kong", polyCity: "hong-kong", lat: 22.3080, lon: 113.9185, unit: "C" },
+      { icao: "ZBAA", name: "Beijing Capital", city: "Beijing", polyCity: "beijing", lat: 40.0799, lon: 116.6031, unit: "C" },
+      { icao: "ZSPD", name: "Shanghai Pudong", city: "Shanghai", polyCity: "shanghai", lat: 31.1443, lon: 121.8083, unit: "C" },
+      { icao: "ZSSS", name: "Shanghai Hongqiao", city: "Shanghai", polyCity: "shanghai", lat: 31.1979, lon: 121.3363, unit: "C" },
+      { icao: "RKSI", name: "Seoul Incheon", city: "Seoul", polyCity: "seoul", lat: 37.4602, lon: 126.4407, unit: "C" },
+      { icao: "RKPK", name: "Busan Gimhae", city: "Busan", polyCity: "busan", lat: 35.1795, lon: 128.9380, unit: "C" },
+      { icao: "RCTP", name: "Taipei Taoyuan", city: "Taipei", polyCity: "taipei", lat: 25.0797, lon: 121.2342, unit: "C" },
+      { icao: "ZGSZ", name: "Shenzhen Bao'an", city: "Shenzhen", polyCity: "shenzhen", lat: 22.6393, lon: 113.8110, unit: "C" },
+      { icao: "ZSQD", name: "Qingdao Jiaodong", city: "Qingdao", polyCity: "qingdao", lat: 36.3620, lon: 120.0880, unit: "C" },
+      { icao: "WSSS", name: "Singapore Changi", city: "Singapore", polyCity: "singapore", lat: 1.3644, lon: 103.9915, unit: "C" },
+      // Tambahan bandara
+      { icao: "RCSS", name: "Taipei Songshan", city: "Taipei", polyCity: "taipei", lat: 25.0697, lon: 121.5525, unit: "C" },
+      { icao: "RPLL", name: "Manila Ninoy Aquino", city: "Manila", polyCity: "manila", lat: 14.5086, lon: 121.0198, unit: "C" },
+      { icao: "VILK", name: "Lucknow", city: "Lucknow", polyCity: "lucknow", lat: 26.7606, lon: 80.8893, unit: "C" },
+      { icao: "LTAC", name: "Ankara Esenboga", city: "Ankara", polyCity: "ankara", lat: 40.1281, lon: 32.9951, unit: "C" },
+      { icao: "LTFM", name: "Istanbul Airport", city: "Istanbul", polyCity: "istanbul", lat: 41.2753, lon: 28.7519, unit: "C" },
+      { icao: "LLBG", name: "Tel Aviv Ben Gurion", city: "Tel Aviv", polyCity: "tel-aviv", lat: 32.0114, lon: 34.8867, unit: "C" },
+      { icao: "EFHK", name: "Helsinki Vantaa", city: "Helsinki", polyCity: "helsinki", lat: 60.3172, lon: 24.9633, unit: "C" },
+      { icao: "EDDM", name: "Munich", city: "Munich", polyCity: "munich", lat: 48.3538, lon: 11.7861, unit: "C" },
+      { icao: "KEWR", name: "Newark Liberty", city: "Newark", polyCity: "nyc", lat: 40.6895, lon: -74.1745, unit: "F" },
+      { icao: "KSFO", name: "San Francisco Intl", city: "San Francisco", polyCity: "san-francisco", lat: 37.6213, lon: -122.3790, unit: "F" },
+      { icao: "KSEA", name: "Seattle Tacoma", city: "Seattle", polyCity: "seattle", lat: 47.4502, lon: -122.3088, unit: "F" },
+      { icao: "KAUS", name: "Austin Bergstrom", city: "Austin", polyCity: "austin", lat: 30.1975, lon: -97.6664, unit: "F" },
+      { icao: "KDFW", name: "Dallas Fort Worth", city: "Dallas", polyCity: "dallas", lat: 32.8998, lon: -97.0403, unit: "F" },
+      { icao: "KIAH", name: "Houston Intercontinental", city: "Houston", polyCity: "houston", lat: 29.9902, lon: -95.3368, unit: "F" },
+      { icao: "ZGGG", name: "Guangzhou Baiyun", city: "Guangzhou", polyCity: "guangzhou", lat: 23.3924, lon: 113.2988, unit: "C" },
+      { icao: "ZHHH", name: "Wuhan Tianhe", city: "Wuhan", polyCity: "wuhan", lat: 30.7838, lon: 114.2081, unit: "C" },
+      { icao: "ZUUU", name: "Chengdu", city: "Chengdu", polyCity: "chengdu", lat: 30.5785, lon: 103.9471, unit: "C" },
+      { icao: "ZUCK", name: "Chongqing Jiangbei", city: "Chongqing", polyCity: "chongqing", lat: 29.7192, lon: 106.6417, unit: "C" },
+      { icao: "ZLXY", name: "Xi’an Xianyang", city: "Xi’an", polyCity: "xian", lat: 34.4471, lon: 108.7516, unit: "C" },
+      { icao: "ZSJN", name: "Jinan Yaoqiang", city: "Jinan", polyCity: "jinan", lat: 36.2661, lon: 117.2159, unit: "C" },
+      { icao: "ZHCC", name: "Zhengzhou Xinzheng", city: "Zhengzhou", polyCity: "zhengzhou", lat: 34.5197, lon: 113.8409, unit: "C" },
+      // Lainnya
+      { icao: "NZWN", name: "Wellington", city: "Wellington", polyCity: "wellington", lat: -41.3272, lon: 174.8053, unit: "C" },
+      { icao: "SBGR", name: "São Paulo Guarulhos", city: "Sao Paulo", polyCity: "sao-paulo", lat: -23.4356, lon: -46.4731, unit: "C" },
+      { icao: "SAEZ", name: "Buenos Aires Ezeiza", city: "Buenos Aires", polyCity: "buenos-aires", lat: -34.8222, lon: -58.5358, unit: "C" },
+    ];
+
+    // Snapshot daftar bandara bawaan.
+    const BUILTIN_AIRPORT_ICAOS = new Set(AIRPORTS.map(a => a.icao));
+
+    // State
+    const rows = new Map(); // icao -> row data
+    const NOTES_KEY = "temp-compare-notes";
+
+    function loadNotes() {
+      try { return JSON.parse(localStorage.getItem(NOTES_KEY) || "{}"); }
+      catch { return {}; }
+    }
+    function saveNotes(obj) {
+      try { localStorage.setItem(NOTES_KEY, JSON.stringify(obj)); } catch {}
+    }
+
+    // ========== Helpers ==========
+    function todayParts() {
+      // Gunakan tanggal LOKAL browser, bukan UTC.
+      // Ini penting karena saat pagi di Indonesia, UTC masih bisa berada di hari sebelumnya.
+      const d = new Date();
+      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const monthName = months[d.getMonth()];
+      const day = d.getDate();
+      const year = d.getFullYear();
+      return {
+        iso: `${year}-${String(d.getMonth()+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`,
+        monthName,
+        day,
+        year,
+        polyDate: `${monthName} ${day}`,
+        polySlugDate: `${monthName.toLowerCase()}-${day}-${year}`
+      };
+    }
+
+    function cToF(c) { return (c * 9/5) + 32; }
+    function fToC(f) { return (f - 32) * 5/9; }
+
+    function formatTemp(val, unit) {
+      if (val == null || isNaN(val)) return "—";
+      const n = Number(val);
+      if (unit === "F") return `${n.toFixed(1)}<span class="unit">°F</span>`;
+      return `${n.toFixed(1)}<span class="unit">°C</span>`;
+    }
+
+    /** Hitung usia observasi dari timestamp METAR (UTC), bukan waktu fetch */
+    function formatAge(obsDate) {
+      if (!obsDate || isNaN(obsDate.getTime())) {
+        return { text: "—", cls: "muted", minutes: null };
+      }
+      const mins = Math.max(0, Math.round((Date.now() - obsDate.getTime()) / 60000));
+      let text, cls;
+      if (mins < 1) {
+        text = "< 1 menit lalu";
+        cls = "ok";
+      } else if (mins < 60) {
+        text = `${mins} menit lalu`;
+        cls = mins <= 30 ? "ok" : "loading"; // oranye kalau >30 menit
+      } else {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        text = m ? `${h} jam ${m} menit lalu` : `${h} jam lalu`;
+        cls = "error"; // merah kalau sudah >1 jam
+      }
+      return { text, cls, minutes: mins };
+    }
+
+    // ========== API calls ==========
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          cache: "no-store"
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // Cache singkat agar refresh berulang tidak selalu menunggu jaringan.
+    const METAR_CACHE = new Map();
+    const METAR_CACHE_MS = 15 * 1000; // cache singkat; refresh manual selalu force
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          cache: "no-store"
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function parseAWCResponse(res, icao) {
+      const data = await res.json();
+      const metar = Array.isArray(data) ? data[0] : data;
+      const tempC = Number(metar?.temp);
+      if (!metar || !Number.isFinite(tempC)) {
+        throw new Error("AWC METAR tidak valid");
+      }
+
+      let obsDate = null;
+      let timeStr = "";
+      if (metar.reportTime) {
+        const d = new Date(metar.reportTime);
+        if (!isNaN(d.getTime())) {
+          obsDate = d;
+          const dd = String(d.getUTCDate()).padStart(2, "0");
+          const hh = String(d.getUTCHours()).padStart(2, "0");
+          const mm = String(d.getUTCMinutes()).padStart(2, "0");
+          timeStr = `${dd}/${hh}:${mm}Z`;
+        }
+      }
+
+      return {
+        tempC,
+        raw: metar.rawOb || "",
+        time: timeStr,
+        obsDate,
+        name: icao,
+        source: "AviationWeather.gov",
+        timeseriesUrl: `https://aviationweather.gov/data/metar/?decoded=1&ids=${encodeURIComponent(icao)}&hours=12&taf=1`
+      };
+    }
+
+    async function fetchVatsimMetar(icao) {
+      const res = await fetchWithTimeout(
+        `https://metar.vatsim.net/${encodeURIComponent(icao)}`,
+        {},
+        2500
+      );
+      const raw = (await res.text()).trim();
+      if (!raw || raw.length < 10 || /error/i.test(raw)) {
+        throw new Error("No METAR data");
+      }
+
+      // Format umum: ... DDHHMMZ ... TT/DD ...
+      const match = raw.match(
+        /\b(\d{2})(\d{2})(\d{2})Z\s+(?:AUTO\s+)?(?:\d{3}|VRB)\d{2,3}(?:G\d{2,3})?KT[\s\S]*?\s(M?\d{2})\/(M?\d{2})\b/
+      );
+      if (!match) throw new Error("Format METAR tidak dikenali");
+
+      const tempC = match[4].startsWith("M")
+        ? -Number(match[4].slice(1))
+        : Number(match[4]);
+
+      const now = new Date();
+      let obsDate = new Date(Date.UTC(
+        now.getUTCFullYear(), now.getUTCMonth(),
+        Number(match[1]), Number(match[2]), Number(match[3]), 0
+      ));
+      if (obsDate.getTime() - now.getTime() > 12 * 3600 * 1000) {
+        obsDate.setUTCDate(obsDate.getUTCDate() - 1);
+      }
+
+      return {
+        tempC,
+        raw,
+        time: `${match[1]}/${match[2]}:${match[3]}Z`,
+        obsDate,
+        name: icao,
+        source: "VATSIM fallback",
+        timeseriesUrl: `https://aviationweather.gov/data/metar/?decoded=1&ids=${encodeURIComponent(icao)}&hours=12&taf=1`
+      };
+    }
+
+    // ========== METAR universal ==========
+    // AWC adalah sumber utama. Karena AWC tidak mengizinkan CORS browser,
+    // beberapa mirror CORS-enabled yang mengambil data NOAA dipakai sebagai
+    // fallback. Ini membuat ICAO custom seperti UUWW tetap bisa bekerja.
+    function parseRawMetar(raw, icao, source, observedAtHint = null) {
+      raw = String(raw || "").trim();
+      if (!raw || raw.length < 10) throw new Error("METAR kosong");
+
+      // Cari token suhu/dewpoint, mis. 21/13 atau M02/M05.
+      const tempMatch = raw.match(/\s(M?\d{2})\/(M?\d{2})(?:\s|$)/);
+      if (!tempMatch) throw new Error("Suhu METAR tidak ditemukan");
+
+      const tempC = tempMatch[1].startsWith("M")
+        ? -Number(tempMatch[1].slice(1))
+        : Number(tempMatch[1]);
+
+      // Waktu observasi METAR: DDHHMMZ — INI sumber utama usia data.
+      // Jangan pakai "received/fetch time" dari API; itu membuat usia ≈ 0.
+      const timeMatch = raw.match(/\b(\d{2})(\d{2})(\d{2})Z\b/);
+      let obsDate = null;
+      let timeStr = "";
+
+      if (timeMatch) {
+        const day = Number(timeMatch[1]);
+        const hour = Number(timeMatch[2]);
+        const min = Number(timeMatch[3]);
+        timeStr = `${timeMatch[1]}/${timeMatch[2]}:${timeMatch[3]}Z`;
+
+        const now = new Date();
+        obsDate = new Date(Date.UTC(
+          now.getUTCFullYear(), now.getUTCMonth(),
+          day, hour, min, 0
+        ));
+
+        // Observasi "di masa depan" >12 jam → kemungkinan hari kemarin
+        if (obsDate.getTime() - now.getTime() > 12 * 3600 * 1000) {
+          obsDate.setUTCDate(obsDate.getUTCDate() - 1);
+        }
+        // Observasi terlalu tua >36 jam → coba bulan berikutnya (ganti bulan)
+        if (now.getTime() - obsDate.getTime() > 36 * 3600 * 1000) {
+          obsDate.setUTCMonth(obsDate.getUTCMonth() + 1);
+        }
+      } else if (observedAtHint) {
+        // Fallback hanya jika raw METAR tidak punya group waktu
+        const hint = String(observedAtHint).trim();
+        const hasExplicitTimezone =
+          /(?:Z|[+-]\d{2}:?\d{2})$/i.test(hint);
+        if (hasExplicitTimezone) {
+          const d = new Date(hint);
+          if (!isNaN(d.getTime())) {
+            obsDate = d;
+            const dd = String(d.getUTCDate()).padStart(2, "0");
+            const hh = String(d.getUTCHours()).padStart(2, "0");
+            const mm = String(d.getUTCMinutes()).padStart(2, "0");
+            timeStr = `${dd}/${hh}:${mm}Z`;
+          }
+        }
+      }
+
+      return {
+        tempC,
+        raw,
+        time: timeStr,
+        obsDate,
+        name: icao,
+        source,
+        timeseriesUrl:
+          `https://aviationweather.gov/data/metar/?decoded=1&ids=${encodeURIComponent(icao)}&hours=12&taf=1`
+      };
+    }
+
+    function findRawMetar(payload, icao) {
+      const seen = new Set();
+      const strings = [];
+
+      function walk(v, depth = 0) {
+        if (depth > 6 || v == null) return;
+        if (typeof v === "string") {
+          const s = v.trim();
+          if (s.length >= 10) strings.push(s);
+          return;
+        }
+        if (typeof v !== "object" || seen.has(v)) return;
+        seen.add(v);
+        if (Array.isArray(v)) {
+          for (const x of v) walk(x, depth + 1);
+        } else {
+          for (const k of Object.keys(v)) walk(v[k], depth + 1);
+        }
+      }
+
+      walk(payload);
+
+      const upperIcao = icao.toUpperCase();
+      const candidates = strings.filter(s => {
+        const u = s.toUpperCase();
+        return (
+          u.includes(upperIcao) &&
+          /\b\d{6}Z\b/.test(u) &&
+          /\bM?\d{2}\/M?\d{2}\b/.test(u)
+        );
+      });
+
+      if (!candidates.length) {
+        // Be permissive for APIs that omit the ICAO inside the raw field.
+        const loose = strings.filter(s =>
+          /\b\d{6}Z\b/.test(s) && /\bM?\d{2}\/M?\d{2}\b/.test(s)
+        );
+        return loose[0] || null;
+      }
+
+      return candidates[0];
+    }
+
+    function extractObservedAt(payload) {
+      const candidates = [];
+
+      function walk(v, depth = 0) {
+        if (depth > 6 || v == null) return;
+        if (typeof v === "object") {
+          for (const [k, val] of Object.entries(v)) {
+            if (/observedAt|reportTime|obsTime|timestamp/i.test(k)) {
+              if (typeof val === "string" || typeof val === "number") {
+                candidates.push(val);
+              }
+            }
+            walk(val, depth + 1);
+          }
+        } else if (Array.isArray(v)) {
+          v.forEach(x => walk(x, depth + 1));
+        }
+      }
+
+      walk(payload);
+
+      for (const x of candidates) {
+        const d = new Date(x);
+        if (!isNaN(d.getTime())) return d.toISOString();
+        if (typeof x === "number") {
+          const d2 = new Date(x < 2e10 ? x * 1000 : x);
+          if (!isNaN(d2.getTime())) return d2.toISOString();
+        }
+      }
+      return null;
+    }
+
+    async function fetchMetarMirror(url, icao, source) {
+      const res = await fetchWithTimeout(
+        url,
+        { headers: { "Accept": "application/json,text/plain;q=0.9,*/*;q=0.8" } },
+        5000
+      );
+
+      const contentType = res.headers.get("content-type") || "";
+      let payload;
+      if (contentType.includes("json")) {
+        payload = await res.json();
+      } else {
+        payload = await res.text();
+      }
+
+      const raw = typeof payload === "string"
+        ? payload
+        : findRawMetar(payload, icao);
+
+      if (!raw) throw new Error(`${source}: raw METAR tidak ditemukan`);
+
+      const observedAt = typeof payload === "string"
+        ? null
+        : extractObservedAt(payload);
+
+      return parseRawMetar(raw, icao, source, observedAt);
+    }
+
+    async function fetchMetar(icao, forceRefresh = false) {
+      const cached = METAR_CACHE.get(icao);
+      if (!forceRefresh && cached && (Date.now() - cached.savedAt) < METAR_CACHE_MS) {
+        return cached.data;
+      }
+
+      const awcUrl =
+        `https://aviationweather.gov/api/data/metar?ids=${encodeURIComponent(icao)}&format=json`;
+
+      // Jalur AWC via proxy publik.
+      const awcProxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(awcUrl)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(awcUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(awcUrl)}`
+      ];
+
+      const jobs = [];
+
+      for (const url of awcProxies) {
+        jobs.push(
+          fetchMetarMirror(url, icao, "AviationWeather.gov")
+        );
+      }
+
+      // Mirror yang CORS-enabled dan mengambil feed NOAA.
+      // Ini terutama untuk mengatasi UUWW dan ICAO internasional lain
+      // ketika proxy AWC sedang gagal.
+      jobs.push(
+        fetchMetarMirror(
+          `https://metars.eu/api/metars/${encodeURIComponent(icao)}`,
+          icao,
+          "NOAA via metars.eu"
+        )
+      );
+
+      jobs.push(
+        fetchMetarMirror(
+          `https://www.datamask.org/api/v1/metar/${encodeURIComponent(icao)}`,
+          icao,
+          "NOAA via Datamask"
+        )
+      );
+
+      jobs.push(
+        fetchMetarMirror(
+          `https://wxdecoder.com/api/wx/${encodeURIComponent(icao)}`,
+          icao,
+          "NOAA via WxDecoder"
+        )
+      );
+
+      // VATSIM tetap dipertahankan sebagai fallback terakhir.
+      jobs.push(
+        fetchVatsimMetar(icao)
+      );
+
+      // Jangan pakai Promise.any (sumber tercepat menang — sering data lama).
+      // Ambil SEMUA yang sukses, pilih observasi dengan timestamp TERBARU.
+      const settled = await Promise.allSettled(jobs);
+      const ok = [];
+      for (const r of settled) {
+        if (r.status === "fulfilled" && r.value && r.value.tempC != null) {
+          ok.push(r.value);
+        }
+      }
+
+      if (ok.length === 0) {
+        throw new Error(
+          "Semua sumber METAR gagal. AWC/proxy, mirror NOAA, dan VATSIM tidak mengembalikan METAR."
+        );
+      }
+
+      ok.sort((a, b) => {
+        const ta = a.obsDate ? a.obsDate.getTime() : 0;
+        const tb = b.obsDate ? b.obsDate.getTime() : 0;
+        if (tb !== ta) return tb - ta; // terbaru dulu
+        // Timestamp sama → prioritaskan AWC / NOAA over VATSIM
+        const rank = (s) => {
+          const x = String(s || "").toLowerCase();
+          if (x.includes("aviationweather") || x.includes("awc")) return 3;
+          if (x.includes("noaa") || x.includes("wxdecoder") || x.includes("metars.eu")) return 2;
+          return 1;
+        };
+        return rank(b.source) - rank(a.source);
+      });
+
+      const result = ok[0];
+      METAR_CACHE.set(icao, { data: result, savedAt: Date.now() });
+      return result;
+    }
+
+    async function fetchForecast(lat, lon, timezone = "auto") {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max&timezone=${timezone}&forecast_days=1`;
+      const res = await fetchWithTimeout(url, {}, 5000);
+      if (!res.ok) throw new Error(`Forecast ${res.status}`);
+      const data = await res.json();
+      const max = data?.daily?.temperature_2m_max?.[0];
+      return {
+        highC: max != null ? Number(max) : null,
+        date: data?.daily?.time?.[0] || ""
+      };
+    }
+
+    async function fetchPolymarket(polyCity) {
+      if (!polyCity) {
+        return { found: false, message: "Mapping Polymarket belum tersedia untuk bandara ini" };
+      }
+      const { polyDate, polySlugDate, monthName, day, year } = todayParts();
+      // Coba beberapa pola slug umum
+      const candidates = [
+        `highest-temperature-in-${polyCity}-on-${polySlugDate}`,
+        `highest-temperature-in-${polyCity}-on-${monthName.toLowerCase()}-${day}-${year}`,
+        `highest-temperature-in-${polyCity}-on-${monthName.toLowerCase()}-${day}`,
+      ];
+
+      let event = null;
+      for (const slug of candidates) {
+        try {
+          const res = await fetch(`https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(slug)}&_=${Date.now()}`, { cache: "no-store" });
+          if (!res.ok) continue;
+          const data = await res.json();
+          const arr = Array.isArray(data) ? data : [data];
+          if (arr.length && arr[0]?.markets?.length) {
+            event = arr[0];
+            break;
+          }
+        } catch (_) {}
+      }
+
+      // Fallback: public-search
+      if (!event) {
+        try {
+          const q = encodeURIComponent(`highest temperature in ${polyCity} ${polyDate}`);
+          const res = await fetch(`https://gamma-api.polymarket.com/public-search?q=${q}&_=${Date.now()}`, { cache: "no-store" });
+          if (res.ok) {
+            const data = await res.json();
+            const events = data.events || [];
+            // cari yang paling cocok dengan hari ini
+            const cityNeedle = polyCity.replace(/-/g, " ").toLowerCase();
+            const dateNeedle = `${monthName} ${day}`.toLowerCase();
+            event = events.find(e => {
+              const title = (e.title || "").toLowerCase();
+              return title.includes(cityNeedle) && title.includes(dateNeedle) && title.includes(String(year));
+            }) || events.find(e => {
+              const title = (e.title || "").toLowerCase();
+              return title.includes(cityNeedle) && title.includes(dateNeedle);
+            });
+          }
+        } catch (_) {}
+      }
+
+      if (!event || !event.markets?.length) {
+        return { found: false, message: "Market tidak ditemukan / belum dibuka" };
+      }
+
+      // Ambil market dengan Yes probability tertinggi
+      let best = null;
+      let bestP = -1;
+      for (const m of event.markets) {
+        let outs = m.outcomes;
+        let prices = m.outcomePrices;
+        if (typeof outs === "string") try { outs = JSON.parse(outs); } catch { outs = []; }
+        if (typeof prices === "string") try { prices = JSON.parse(prices); } catch { prices = []; }
+        const yesIdx = Array.isArray(outs) ? outs.indexOf("Yes") : -1;
+        if (yesIdx >= 0 && prices[yesIdx] != null) {
+          const p = parseFloat(prices[yesIdx]);
+          if (p > bestP) {
+            bestP = p;
+            best = { question: m.question, probability: p, slug: event.slug };
+          }
+        }
+      }
+
+      if (!best) return { found: false, message: "Tidak ada outcome Yes" };
+
+      // Ekstrak teks range suhu dari question
+      // contoh: "Will the highest temperature in New York City be between 64-65°F on September 22?"
+      let rangeText = best.question;
+      const match = best.question.match(/(?:be |be between |be )(.+?)(?: on |$)/i);
+      if (match) rangeText = match[1].replace(/\?$/, "").trim();
+
+      return {
+        found: true,
+        range: rangeText,
+        probability: best.probability,
+        question: best.question,
+        slug: best.slug || event.slug,
+        url: `https://polymarket.com/event/${best.slug || event.slug}`
+      };
+    }
+
+    // ========== UI ==========
+    function populateSelect() {
+      const list = document.getElementById("airportList");
+      list.innerHTML = "";
+      AIRPORTS.forEach(a => {
+        const opt = document.createElement("option");
+        opt.value = a.icao;
+        opt.label = `${a.icao} — ${a.name} (${a.city})`;
+        list.appendChild(opt);
+      });
+    }
+
+    function resolveAirport(raw) {
+      const code = (raw || "").trim().toUpperCase();
+      if (!code) return null;
+      return AIRPORTS.find(a => a.icao === code) || null;
+    }
+
+    // ========== Bandara custom ==========
+    // Menyimpan definisi bandara yang ditemukan otomatis agar tetap tersedia
+    // setelah halaman ditutup/dibuka kembali.
+    const CUSTOM_AIRPORTS_KEY = "tempCompare.customAirports.v1";
+
+    function loadCustomAirports() {
+      try {
+        const data = JSON.parse(localStorage.getItem(CUSTOM_AIRPORTS_KEY) || "[]");
+        return Array.isArray(data) ? data : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveCustomAirports() {
+      try {
+        const custom = AIRPORTS.filter(a => !BUILTIN_AIRPORT_ICAOS.has(a.icao));
+        localStorage.setItem(CUSTOM_AIRPORTS_KEY, JSON.stringify(custom));
+      } catch (e) {
+        console.warn("Gagal menyimpan bandara custom:", e);
+      }
+    }
+
+    function restoreCustomAirports() {
+      const custom = loadCustomAirports();
+      for (const a of custom) {
+        if (!a?.icao || AIRPORTS.some(x => x.icao === a.icao)) continue;
+        AIRPORTS.push(a);
+      }
+    }
+
+    async function fetchJsonViaProxy(targetUrl, timeoutMs = 5000) {
+      const candidates = [
+        // Direct AWC — works only if the execution environment permits CORS.
+        targetUrl,
+        // Public CORS proxies as fallback for standalone/Netlify browser pages.
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
+      ];
+
+      const jobs = candidates.map(async (url) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          const res = await fetch(url, {
+            signal: controller.signal,
+            cache: "no-store",
+            headers: { "Accept": "application/json" }
+          });
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+
+          // Jangan menerima response kosong sebagai "sukses".
+          if (Array.isArray(data) && data.length === 0) {
+            throw new Error("Data kosong");
+          }
+
+          return data;
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+
+      return await Promise.any(jobs);
+    }
+
+    // ========== Fallback metadata bandara ==========
+    // AWC resmi tidak mengizinkan CORS dari browser. Karena itu lookup
+    // metadata AWC melalui proxy publik dapat gagal walaupun ICAO valid.
+    // UUWW disediakan sebagai fallback lokal karena sudah diverifikasi.
+    const KNOWN_CUSTOM_AIRPORTS = {
+      UUWW: {
+        icao: "UUWW",
+        name: "Vnukovo International Airport",
+        city: "Moscow",
+        polyCity: null,
+        lat: 55.5915,
+        lon: 37.2615,
+        unit: "C"
+      }
+    };
+
+    function airportFromKnownFallback(icao) {
+      const a = KNOWN_CUSTOM_AIRPORTS[icao];
+      return a ? { ...a } : null;
+    }
+
+    async function lookupAirportViaNominatim(icao) {
+      const url =
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5` +
+        `&q=${encodeURIComponent(icao + " airport")}`;
+
+      const res = await fetchWithTimeout(
+        url,
+        { headers: { "Accept": "application/json" } },
+        5000
+      );
+      if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`);
+
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Nominatim response tidak valid");
+
+      const hit = data.find(x => {
+        const name = String(x?.display_name || "").toUpperCase();
+        const cls = String(x?.class || "").toLowerCase();
+        const type = String(x?.type || "").toLowerCase();
+        return name.includes(icao) ||
+          (cls === "aeroway" && (type === "aerodrome" || type === "airport"));
+      });
+
+      if (!hit) throw new Error(`ICAO ${icao} tidak ditemukan di OpenStreetMap`);
+
+      const lat = Number(hit.lat);
+      const lon = Number(hit.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        throw new Error("Koordinat OpenStreetMap tidak valid");
+      }
+
+      const display = String(hit.display_name || hit.name || icao);
+      const name = String(hit.name || display.split(",")[0] || icao).trim();
+
+      return {
+        icao,
+        name,
+        city: name,
+        polyCity: null,
+        lat,
+        lon,
+        unit: "C"
+      };
+    }
+
+    async function lookupCustomAirport(icao) {
+      // Jalur tercepat untuk ICAO yang sudah dikenal.
+      const known = airportFromKnownFallback(icao);
+      if (known) {
+        AIRPORTS.push(known);
+        saveCustomAirports();
+        populateSelect();
+        return known;
+      }
+
+      /*
+       * Gunakan dua sumber metadata AWC:
+       * 1. stationinfo — stasiun observasi METAR/TAF
+       * 2. airport — database bandara AWC
+       *
+       * UUWW adalah contoh penting: bandara valid dan punya METAR AWC,
+       * tetapi tidak boleh dianggap "tidak ditemukan" hanya karena salah
+       * satu endpoint metadata tidak mengembalikan hasil.
+       */
+      const urls = [
+        `https://aviationweather.gov/api/data/stationinfo?ids=${encodeURIComponent(icao)}&format=json`,
+        `https://aviationweather.gov/api/data/airport?ids=${encodeURIComponent(icao)}&format=json`
+      ];
+
+      const results = await Promise.allSettled(
+        urls.map(url => fetchJsonViaProxy(url, 5000))
+      );
+
+      let item = null;
+      let source = "";
+
+      // Prioritaskan stationinfo.
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status !== "fulfilled") continue;
+
+        const arr = Array.isArray(r.value) ? r.value : [r.value];
+        const found = arr.find(x =>
+          String(x?.icaoId || "").toUpperCase() === icao
+        );
+
+        if (found) {
+          item = found;
+          source = i === 0 ? "stationinfo" : "airport";
+          break;
+        }
+      }
+
+      if (!item) {
+        try {
+          const airport = await lookupAirportViaNominatim(icao);
+          AIRPORTS.push(airport);
+          saveCustomAirports();
+          populateSelect();
+          return airport;
+        } catch (_) {
+          throw new Error(
+            `ICAO ${icao} belum berhasil ditemukan. AWC metadata dan OpenStreetMap tidak mengembalikan data.`
+          );
+        }
+      }
+
+      const lat = Number(item.lat);
+      const lon = Number(item.lon);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        throw new Error("Koordinat bandara tidak tersedia dari AWC");
+      }
+
+      const country = String(item.country || "").toUpperCase();
+      const unit = (
+        country === "US" ||
+        country === "USA" ||
+        country === "UNITED STATES"
+      ) ? "F" : "C";
+
+      const name =
+        item.site ||
+        item.name ||
+        item.icaoId ||
+        icao;
+
+      const city =
+        item.city ||
+        item.site ||
+        item.state ||
+        icao;
+
+      const airport = {
+        icao,
+        name,
+        city,
+        // Bandara custom tidak otomatis dipetakan ke market Polymarket.
+        polyCity: null,
+        lat,
+        lon,
+        unit
+      };
+
+      AIRPORTS.push(airport);
+      saveCustomAirports();
+      populateSelect();
+
+      return airport;
+    }
+
+    function ensureEmptyRow() {
+      const tbody = document.getElementById("tbody");
+      const empty = document.getElementById("emptyRow");
+      if (rows.size === 0) {
+        if (!empty) {
+          const tr = document.createElement("tr");
+          tr.id = "emptyRow";
+          tr.innerHTML = `<td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Ketik kode ICAO lalu klik “Tambah ke tabel”. ICAO di luar daftar akan dicari otomatis.</td>`;
+          tbody.appendChild(tr);
+        }
+      } else if (empty) {
+        empty.remove();
+      }
+    }
+
+    // ========== Bandara terakhir ==========
+    // Menyimpan daftar ICAO terakhir di browser dan membukanya kembali saat halaman dibuka.
+    const LAST_AIRPORTS_KEY = "tempCompare.lastAirports.v4";
+
+    function saveLastAirports() {
+      try {
+        const codes = [...rows.keys()];
+        localStorage.setItem(LAST_AIRPORTS_KEY, JSON.stringify(codes));
+      } catch (e) {
+        console.warn("Gagal menyimpan bandara terakhir:", e);
+      }
+    }
+
+    function restoreLastAirports() {
+      try {
+        restoreCustomAirports();
+        const codes = JSON.parse(localStorage.getItem(LAST_AIRPORTS_KEY) || "[]");
+        if (!Array.isArray(codes) || codes.length === 0) return false;
+
+        let count = 0;
+        for (const icao of codes) {
+          const airport = AIRPORTS.find(a => a.icao === icao);
+          if (airport && !rows.has(icao)) {
+            addRow(airport, true);
+            count++;
+          }
+        }
+        return count > 0;
+      } catch (e) {
+        console.warn("Gagal memulihkan bandara terakhir:", e);
+        return false;
+      }
+    }
+
+    function addRow(airport, restoring = false) {
+      if (rows.has(airport.icao)) {
+        alert(`${airport.icao} sudah ada di tabel`);
+        return;
+      }
+      const tbody = document.getElementById("tbody");
+      ensureEmptyRow();
+
+      const tr = document.createElement("tr");
+      tr.dataset.icao = airport.icao;
+      tr.innerHTML = `
+        <td>
+          <span class="icao">${airport.icao}</span>
+          <div class="muted">${airport.name}</div>
+          <span class="badge badge-${airport.unit.toLowerCase()}">${airport.unit === "F" ? "°F market" : "°C market"}</span>
+        </td>
+        <td class="col-metar"><span class="muted">menunggu…</span></td>
+        <td class="col-age"><span class="muted">—</span></td>
+        <td class="col-forecast"><span class="muted">menunggu…</span></td>
+        <td class="col-poly"><span class="muted">menunggu…</span></td>
+        <td>
+          <textarea class="note" data-icao="${airport.icao}" placeholder="Posisi / catatan…"></textarea>
+        </td>
+        <td><button class="secondary btn-remove" style="padding:0.3rem 0.6rem;font-size:0.8rem;">Hapus</button></td>
+      `;
+      tbody.appendChild(tr);
+      rows.set(airport.icao, { airport, tr });
+
+      const noteEl = tr.querySelector("textarea.note");
+      const saved = loadNotes();
+      if (saved[airport.icao]) noteEl.value = saved[airport.icao];
+      noteEl.addEventListener("input", () => {
+        const all = loadNotes();
+        all[airport.icao] = noteEl.value;
+        saveNotes(all);
+      });
+
+      tr.querySelector(".btn-remove").addEventListener("click", () => {
+        tr.remove();
+        rows.delete(airport.icao);
+        ensureEmptyRow();
+        saveLastAirports();
+      });
+
+      // langsung fetch
+      refreshOne(airport.icao);
+    
+      if (!restoring) saveLastAirports();
+    }
+
+    async function refreshOne(icao, forceRefresh = false) {
+      const entry = rows.get(icao);
+      if (!entry) return;
+      const { airport, tr } = entry;
+      const metarCell = tr.querySelector(".col-metar");
+      const ageCell = tr.querySelector(".col-age");
+      const forecastCell = tr.querySelector(".col-forecast");
+      const polyCell = tr.querySelector(".col-poly");
+
+      metarCell.innerHTML = `<span class="loading">Loading METAR…</span>`;
+      if (ageCell) ageCell.innerHTML = `<span class="loading">…</span>`;
+      forecastCell.innerHTML = `<span class="loading">Loading forecast…</span>`;
+      polyCell.innerHTML = `<span class="loading">Loading Polymarket…</span>`;
+
+      // METAR
+      try {
+        const m = await fetchMetar(icao, forceRefresh);
+        let display = m.tempC;
+        if (airport.unit === "F" && display != null) display = cToF(display);
+        const srcLabel = m.source === "AviationWeather.gov" ? "AWC METAR" : m.source;
+        const link = m.timeseriesUrl
+          ? ` · <a href="${m.timeseriesUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-size:0.75rem;">timeseries ↗</a>`
+          : "";
+        metarCell.innerHTML = `
+          <div class="temp">${formatTemp(display, airport.unit)}</div>
+          <div class="status ok">${m.time || ""} <span class="muted">(${srcLabel})</span>${link}</div>
+        `;
+        tr._metarResult = m;
+        const age = formatAge(m.obsDate);
+        if (ageCell) {
+          ageCell.innerHTML = `<span class="${age.cls}" style="font-weight:600;">${age.text}</span>`;
+        }
+      } catch (e) {
+        tr._metarResult = null;
+        metarCell.innerHTML = `<span class="error">Gagal: ${e.message}</span>`;
+        if (ageCell) ageCell.innerHTML = `<span class="error">—</span>`;
+      }
+
+      // Forecast
+      try {
+        const f = await fetchForecast(airport.lat, airport.lon);
+        let display = f.highC;
+        if (airport.unit === "F" && display != null) display = cToF(display);
+        forecastCell.innerHTML = `
+          <div class="temp">${formatTemp(display, airport.unit)}</div>
+          <div class="status muted">Open-Meteo · ${f.date || "hari ini"}</div>
+        `;
+      } catch (e) {
+        forecastCell.innerHTML = `<span class="error">Gagal: ${e.message}</span>`;
+      }
+
+      // Polymarket
+      try {
+        const p = await fetchPolymarket(airport.polyCity);
+        if (!p.found) {
+          polyCell.innerHTML = `<span class="muted">${p.message}</span>`;
+        } else {
+          const pct = (p.probability * 100).toFixed(1);
+          polyCell.innerHTML = `
+            <div class="temp" style="font-size:1rem;">${p.range}</div>
+            <div style="margin-top:0.3rem;">
+              <span class="prob">${pct}%</span>
+              <a href="${p.url}" target="_blank" rel="noopener" class="muted" style="margin-left:0.5rem;font-size:0.8rem;">buka market ↗</a>
+            </div>
+          `;
+        }
+      } catch (e) {
+        polyCell.innerHTML = `<span class="error">Gagal: ${e.message}</span>`;
+      }
+    }
+
+    function updateDisplayedAges() {
+      for (const { airport, tr } of rows.values()) {
+        const ageCell = tr.querySelector(".col-age");
+        const metarCell = tr.querySelector(".col-metar");
+        if (!ageCell || !metarCell) continue;
+
+        const entry = tr._metarResult;
+        if (!entry?.obsDate) continue;
+
+        const age = formatAge(entry.obsDate);
+        ageCell.innerHTML =
+          `<span class="${age.cls}" style="font-weight:600;">${age.text}</span>`;
+      }
+    }
+
+    async function refreshAll() {
+      const btn = document.getElementById("btnFetchAll");
+      btn.disabled = true;
+
+      const oldText = btn.textContent;
+      btn.textContent = "Refreshing…";
+
+      try {
+        // forceRefresh=true:
+        // - METAR selalu mengambil data baru, tidak memakai cache 45 detik.
+        // - Forecast dan Polymarket juga dijalankan ulang seperti biasa.
+        const promises = [...rows.keys()].map(icao => refreshOne(icao, true));
+        await Promise.allSettled(promises);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+    }
+
+    // ========== Init ==========
+    let autoRefreshTimer = null;
+
+    function startAutoRefresh() {
+      if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      autoRefreshTimer = setInterval(() => {
+        if (rows.size > 0) refreshAll();
+      }, 2 * 60 * 1000); // 2 menit
+      const el = document.getElementById("autoStatus");
+      if (el) el.textContent = "ON (2 menit)";
+
+      // Usia data bergerak real-time setiap menit tanpa request API tambahan.
+      if (window.ageDisplayTimer) clearInterval(window.ageDisplayTimer);
+      window.ageDisplayTimer = setInterval(updateDisplayedAges, 60 * 1000);
+    }
+
+    async function addFromInput() {
+      const input = document.getElementById("airportInput");
+      const code = (input.value || "").trim().toUpperCase();
+      if (!code) return;
+
+      let airport = resolveAirport(code);
+
+      if (!airport) {
+        const oldText = input.value;
+        input.disabled = true;
+        const btn = document.getElementById("btnAdd");
+        const oldBtnText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Mencari bandara…";
+
+        try {
+          airport = await lookupCustomAirport(code);
+        } catch (e) {
+          alert(`Bandara ${code} belum berhasil ditemukan dari database AWC. Pastikan ICAO 4 huruf benar dan coba lagi.\n\n${e.message}`);
+          input.value = oldText;
+          input.focus();
+          return;
+        } finally {
+          input.disabled = false;
+          btn.disabled = false;
+          btn.textContent = oldBtnText;
+        }
+      }
+
+      addRow(airport);
+      input.value = "";
+      input.focus();
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      restoreCustomAirports();
+      populateSelect();
+
+      const input = document.getElementById("airportInput");
+      document.getElementById("btnAdd").addEventListener("click", addFromInput);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addFromInput();
+        }
+      });
+
+      document.getElementById("btnFetchAll").addEventListener("click", refreshAll);
+      document.getElementById("btnClear").addEventListener("click", () => {
+        rows.clear();
+        document.getElementById("tbody").innerHTML = "";
+        ensureEmptyRow();
+        saveLastAirports();
+      });
+
+      // Pulihkan bandara terakhir.
+      // Jika belum pernah ada daftar tersimpan, tampilkan hanya KLGA.
+      if (!restoreLastAirports()) {
+        const a = AIRPORTS.find(x => x.icao === "KLGA");
+        if (a) addRow(a);
+      }
+
+      startAutoRefresh();
+    });
+
+    window.addEventListener("pagehide", saveLastAirports);
+    window.addEventListener("beforeunload", saveLastAirports);
+  </script>
+</body>
+</html>
